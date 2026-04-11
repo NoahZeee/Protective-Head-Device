@@ -42,6 +42,7 @@ BLEClient* pClient;
 BLERemoteCharacteristic* pRemoteCharacteristic;
 BLEAdvertisedDevice* myDevice;
 bool clientConnected = false;
+bool isConnecting = false; // Prevent multiple concurrent connection attempts
 String receivedData = ""; // Store received BLE data
 
 // See the following for generating UUIDs:
@@ -106,10 +107,24 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
         // Check if the advertised device has our service
         if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(BLEUUID(SERVICE_UUID)))
         {
-            BLEDevice::getScan()->stop();
-            myDevice = new BLEAdvertisedDevice(advertisedDevice);
-            Serial.println("Found our service, connecting...");
-            connectToServer();
+            // Only attempt connection if not already connecting or connected
+            if (!isConnecting && !clientConnected)
+            {
+                BLEDevice::getScan()->stop();
+                myDevice = new BLEAdvertisedDevice(advertisedDevice);
+                Serial.println("Found our service, connecting...");
+                isConnecting = true;
+                if (connectToServer())
+                {
+                    Serial.println("Connection successful!");
+                    clientConnected = true;
+                }
+                else
+                {
+                    Serial.println("Connection failed, will retry...");
+                    isConnecting = false;
+                }
+            }
         }
     }
 };
@@ -171,13 +186,15 @@ bool connectToServer()
     pClient->setClientCallbacks(new MyClientCallback());
     Serial.println("Client callbacks set");
 
+    Serial.println("Attempting BLE connection...");
     if (!pClient->connect(myDevice))
     {
-        Serial.println("Failed to connect");
+        Serial.println("Failed to connect - connection rejected or timeout");
         return false;
     }
 
     Serial.println("Connected to server");
+    delay(1000); // Give time for connection to stabilize
 
     // Obtain a reference to the service
     Serial.print("Getting service: ");
