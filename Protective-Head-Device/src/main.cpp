@@ -165,6 +165,8 @@ float measureDistanceCM()
     digitalWrite(TRIG_PIN, LOW);
 
     unsigned long duration = pulseIn(ECHO_PIN, HIGH, MAX_ECHO_TIME);
+    Serial.print("Duration: ");
+    Serial.println(duration);
     if (duration == 0)
     {
         return -1.0; // timeout / no echo
@@ -207,7 +209,7 @@ void setup() {
 void loop() {
     float distanceCm = measureDistanceCM();
     objectDistance = (distanceCm >= 0) ? (int)distanceCm : objectDistance;
-    vibrateCase(10);
+    vibrateCase(objectDistance);
     Serial.println(analogRead(2));
     float voltage = (analogRead(2))*(3.0/1024.0);
 
@@ -248,7 +250,7 @@ display.setCursor(0, 36);
   
 
 
-    delay(1000);
+    delay(100);
 }
 
 // put function definitions here:
