@@ -19,6 +19,10 @@
 #define VIBRATION_FREQUENCY 1000 // Frequency for PWM (Hz)
 #define VIBRATION_RESOLUTION 8
 
+#define TRIG_PIN 32
+#define ECHO_PIN 33
+#define MAX_ECHO_TIME 30000 // 30 ms timeout for ~5 meters
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 BLEServer *pServer = NULL;
@@ -158,6 +162,22 @@ void vibrateCase(int objectDistance) {
     }
 }
 
+float measureDistanceCM()
+{
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+
+    unsigned long duration = pulseIn(ECHO_PIN, HIGH, MAX_ECHO_TIME);
+    if (duration == 0)
+    {
+        return -1.0; // timeout / no echo
+    }
+    return (duration*.0343)/2;
+}
+
 void sendMessage(String message)
 {
     pTxCharacteristic->setValue(message.c_str());
@@ -169,34 +189,45 @@ void messageHandler(String message)
     // ADD YOUR CODE HERE
     Serial.println(message);
 }
+
 void setup() {
   // put your setup code here, to run once:
   setupVibrationMotors();
-Wire.setPins(4, 5);
-Wire.begin();
+  Wire.setPins(4, 5);
+  Wire.begin();
   pinMode(2, INPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  digitalWrite(TRIG_PIN, LOW);
   Serial.begin(9600);
   analogReadResolution(10); 
-setupBluetooth();
-display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
+  setupBluetooth();
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
     Serial.println(F("SSD1306 allocation failed"));
     for(;;);
   }
   delay(200);
-   
 }
 
 void loop() {
-    // float objectDistance = analogRead(2);
+    float distanceCm = measureDistanceCM();
+    objectDistance = (distanceCm >= 0) ? (int)distanceCm : objectDistance;
     vibrateCase(10);
-  Serial.println(analogRead(2));
-   float voltage = (analogRead(2))*(3.0/1024.0);
+    Serial.println(analogRead(2));
+    float voltage = (analogRead(2))*(3.0/1024.0);
 
  float temperatureC = (voltage - 0.5) * 100 ;
   Serial.print(temperatureC); Serial.println(" degrees C");
    float temperatureF = (temperatureC * 9.0 / 5.0) + 32.0;
  Serial.print(temperatureF); Serial.println(" degrees F");
+ if (distanceCm >= 0) {
+        Serial.print("Distance: ");
+        Serial.print(distanceCm);
+        Serial.println(" cm");
+    } else {
+        Serial.println("Distance: timeout");
+    }
  
    loopBluetooth();
   
@@ -209,12 +240,21 @@ void loop() {
   display.setCursor(0, 10);
   // Display static text
   display.println(temperatureF);
+display.setCursor(0, 36);
+  if (distanceCm >= 0) {
+        display.print("Dist: ");
+        display.print(distanceCm);
+        display.println(" cm");
+    } else {
+        display.println("Dist: timeout");
+    }
   display.display(); 
+
 
   
 
 
-  delay(1000);
+    delay(1000);
 }
 
 // put function definitions here:
