@@ -3,6 +3,9 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+#include <BLEClient.h>
 #include <Wire.h>
 #include "bluetooth.h"
 
@@ -25,12 +28,21 @@
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
+// BLE Server variables
 BLEServer *pServer = NULL;
 BLECharacteristic *pTxCharacteristic;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 uint8_t txValue = 0;
 int objectDistance = 60;
+
+// BLE Client variables
+BLEScan* pBLEScan;
+BLEClient* pClient;
+BLERemoteCharacteristic* pRemoteCharacteristic;
+BLEAdvertisedDevice* myDevice;
+bool clientConnected = false;
+String receivedData = ""; // Store received BLE data
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -39,6 +51,9 @@ int objectDistance = 60;
 #define SERVICE_UUID "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+
+// Forward declaration
+bool connectToServer();
 
 class MyServerCallbacks : public BLEServerCallbacks
 {
@@ -60,6 +75,41 @@ class MyCallbacks : public BLECharacteristicCallbacks
         if (rxValue.length() > 0)
         {
             messageHandler(rxValue.c_str());
+        }
+    }
+};
+
+// BLE Client callback for connect/disconnect
+class MyClientCallback : public BLEClientCallbacks
+{
+    void onConnect(BLEClient* pclient)
+    {
+        clientConnected = true;
+        Serial.println("Client connected to server");
+    }
+
+    void onDisconnect(BLEClient* pclient)
+    {
+        clientConnected = false;
+        Serial.println("Client disconnected from server");
+    }
+};
+
+// BLE Client advertised device callback
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
+{
+    void onResult(BLEAdvertisedDevice advertisedDevice)
+    {
+        Serial.print("BLE Advertised Device found: ");
+        Serial.println(advertisedDevice.toString().c_str());
+
+        // Check if the advertised device has our service
+        if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(BLEUUID(SERVICE_UUID)))
+        {
+            BLEDevice::getScan()->stop();
+            myDevice = new BLEAdvertisedDevice(advertisedDevice);
+            Serial.println("Found our service, connecting...");
+            connectToServer();
         }
     }
 };
@@ -93,8 +143,72 @@ boolean setupBluetooth()
     pService->start();
 
     // Start advertising
-    pServer->getAdvertising()->start();
+    BLEAdvertising *pAdvertising = pServer->getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->start();
     Serial.println("Waiting a client connection to notify...");
+
+    // Initialize BLE Client (comment out to make server-only)
+    pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setInterval(1349);
+    pBLEScan->setWindow(449);
+    pBLEScan->setActiveScan(true);
+
+    return true;
+}
+
+// Function to connect to another ESP32 server
+bool connectToServer()
+{
+    Serial.print("Connecting to ");
+    Serial.println(myDevice->getAddress().toString().c_str());
+
+    pClient = BLEDevice::createClient();
+    pClient->setClientCallbacks(new MyClientCallback());
+
+    if (!pClient->connect(myDevice))
+    {
+        Serial.println("Failed to connect");
+        return false;
+    }
+
+    Serial.println("Connected to server");
+
+    // Obtain a reference to the service
+    BLERemoteService* pRemoteService = pClient->getService(BLEUUID(SERVICE_UUID));
+    if (pRemoteService == nullptr)
+    {
+        Serial.print("Failed to find our service UUID: ");
+        Serial.println(SERVICE_UUID);
+        pClient->disconnect();
+        return false;
+    }
+
+    // Obtain a reference to the characteristic
+    pRemoteCharacteristic = pRemoteService->getCharacteristic(BLEUUID(CHARACTERISTIC_UUID_TX));
+    if (pRemoteCharacteristic == nullptr)
+    {
+        Serial.print("Failed to find our characteristic UUID: ");
+        Serial.println(CHARACTERISTIC_UUID_TX);
+        pClient->disconnect();
+        return false;
+    }
+
+    // Register for notifications
+    if (pRemoteCharacteristic->canNotify())
+    {
+        pRemoteCharacteristic->registerForNotify([](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {
+            receivedData = "";
+            for (size_t i = 0; i < length; i++)
+            {
+                receivedData += (char)pData[i];
+            }
+            Serial.print("Received from remote: ");
+            Serial.println(receivedData);
+        });
+    }
 
     return true;
 }
@@ -126,6 +240,15 @@ void loopBluetooth()
         // do stuff here on first connect
         oldDeviceConnected = deviceConnected;
     }
+
+    // BLE Client: scan for other devices if not connected
+    // To make this board server-only, comment out the following 4 lines
+    if (!clientConnected)
+    {
+        Serial.println("Scanning for BLE servers...");
+        pBLEScan->start(5, false); // Scan for 5 seconds
+    }
+
     delay(1000);
 }
 
@@ -202,6 +325,12 @@ void setup() {
   Serial.begin(9600);
   analogReadResolution(10); 
   setupBluetooth();
+      // Initialize BLE Client
+    pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setInterval(1349);
+    pBLEScan->setWindow(449);
+    pBLEScan->setActiveScan(true);
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
     Serial.println(F("SSD1306 allocation failed"));
@@ -216,7 +345,7 @@ void loop() {
     Serial.println(analogRead(2));
     float voltage = (analogRead(2))*(3.3/1024.0);
 
- float temperatureC = (voltage - 0.5) * 100 ;
+ float temperatureC = (voltage - 0.5) * 100 + 2;
   Serial.print(temperatureC); Serial.println(" degrees C");
    float temperatureF = (temperatureC * 9.0 / 5.0) + 32.0;
  Serial.print(temperatureF); Serial.println(" degrees F");
@@ -248,6 +377,14 @@ display.setCursor(0, 36);
     } else {
         display.println("Dist: timeout");
     }
+  display.setTextSize(1);
+  display.setCursor(0, 56);
+  if (receivedData.length() > 0) {
+      display.print("Remote: ");
+      display.println(receivedData);
+  } else {
+      display.println("No remote data");
+  }
   display.display(); 
 
 
