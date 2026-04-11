@@ -9,12 +9,15 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-// Sam addutui
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
-
 #define OLED_RESET     -1
 
+// Vibration Motor Defines:
+#define VIBRATION_PIN_1 12
+#define VIBRATION_CHANNEL_1 0
+#define VIBRATION_FREQUENCY 1000 // Frequency for PWM (Hz)
+#define VIBRATION_RESOLUTION 8
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
@@ -23,6 +26,7 @@ BLECharacteristic *pTxCharacteristic;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 uint8_t txValue = 0;
+int objectDistance = 60;
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -121,6 +125,39 @@ void loopBluetooth()
     delay(1000);
 }
 
+void setupVibrationMotors() {
+    // Configure PWM for vibration motors
+    ledcSetup(VIBRATION_CHANNEL_1, VIBRATION_FREQUENCY, VIBRATION_RESOLUTION);
+    ledcAttachPin(VIBRATION_PIN_1, VIBRATION_CHANNEL_1);
+    
+    // Start with motors off
+    ledcWrite(VIBRATION_CHANNEL_1, 0);
+}
+
+void vibrateMotorOn(int intensity) {
+    // intensity: 0-255 (0 = off, 255 = max)
+    // duration: milliseconds
+    ledcWrite(VIBRATION_CHANNEL_1, intensity);
+}
+
+void vibrateMotorOff(int intensity) {
+    // intensity: 0-255 (0 = off, 255 = max)
+    // duration: milliseconds
+    ledcWrite(VIBRATION_CHANNEL_1, intensity);
+}
+
+void vibrateCase(int objectDistance) {
+    if (objectDistance < 20) {
+        vibrateMotorOn(255); // Max intensity
+    } else if (objectDistance < 40) {
+        vibrateMotorOn(128); // Medium intensity
+    } else if (objectDistance < 70) {
+        vibrateMotorOn(64); // Low intensity
+    } else {
+        vibrateMotorOff(0); // Off
+    }
+}
+
 void sendMessage(String message)
 {
     pTxCharacteristic->setValue(message.c_str());
@@ -134,6 +171,7 @@ void messageHandler(String message)
 }
 void setup() {
   // put your setup code here, to run once:
+  setupVibrationMotors();
 Wire.setPins(4, 5);
 Wire.begin();
   pinMode(2, INPUT);
@@ -150,6 +188,8 @@ if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
 }
 
 void loop() {
+    // float objectDistance = analogRead(2);
+    vibrateCase(objectDistance);
   Serial.println(analogRead(2));
    float voltage = (analogRead(2))*(3.0/1024.0);
 
