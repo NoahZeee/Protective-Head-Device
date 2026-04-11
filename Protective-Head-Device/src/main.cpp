@@ -149,9 +149,13 @@ void vibrateCase(int objectDistance) {
         vibrateMotor(0); // Off
     } else if (objectDistance < 20) {
         vibrateMotor(255); // Max intensity
+    } else if (objectDistance < 30) {
+        vibrateMotor(200);
     } else if (objectDistance < 40) {
         vibrateMotor(128); // Medium intensity
-    } else if (objectDistance < 70) {
+    } else if (objectDistance < 50) {
+        vibrateMotor(100);
+    }else if (objectDistance < 70) {
         vibrateMotor(64); // Low intensity
     } else {
         vibrateMotor(0); // Off
