@@ -138,13 +138,7 @@ void setupVibrationMotors() {
     ledcWrite(VIBRATION_CHANNEL_1, 0);
 }
 
-void vibrateMotorOn(int intensity) {
-    // intensity: 0-255 (0 = off, 255 = max)
-    // duration: milliseconds
-    ledcWrite(VIBRATION_CHANNEL_1, intensity);
-}
-
-void vibrateMotorOff(int intensity) {
+void vibrateMotor(int intensity) {
     // intensity: 0-255 (0 = off, 255 = max)
     // duration: milliseconds
     ledcWrite(VIBRATION_CHANNEL_1, intensity);
@@ -152,13 +146,13 @@ void vibrateMotorOff(int intensity) {
 
 void vibrateCase(int objectDistance) {
     if (objectDistance < 20) {
-        vibrateMotorOn(255); // Max intensity
+        vibrateMotor(255); // Max intensity
     } else if (objectDistance < 40) {
-        vibrateMotorOn(128); // Medium intensity
+        vibrateMotor(128); // Medium intensity
     } else if (objectDistance < 70) {
-        vibrateMotorOn(64); // Low intensity
+        vibrateMotor(64); // Low intensity
     } else {
-        vibrateMotorOff(0); // Off
+        vibrateMotor(0); // Off
     }
 }
 
