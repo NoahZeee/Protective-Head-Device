@@ -151,7 +151,7 @@ if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
 
 void loop() {
   Serial.println(analogRead(2));
-   float voltage = (analogRead(2))*(3.3/1024.0);
+   float voltage = (analogRead(2))*(3.0/1024.0);
 
  float temperatureC = (voltage - 0.5) * 100 ;
   Serial.print(temperatureC); Serial.println(" degrees C");
