@@ -145,7 +145,9 @@ void vibrateMotor(int intensity) {
 }
 
 void vibrateCase(int objectDistance) {
-    if (objectDistance < 20) {
+    if (objectDistance < 0) {
+        vibrateMotor(0); // Off
+    } else if (objectDistance < 20) {
         vibrateMotor(255); // Max intensity
     } else if (objectDistance < 40) {
         vibrateMotor(128); // Medium intensity
@@ -165,8 +167,6 @@ float measureDistanceCM()
     digitalWrite(TRIG_PIN, LOW);
 
     unsigned long duration = pulseIn(ECHO_PIN, HIGH, MAX_ECHO_TIME);
-    Serial.print("Duration: ");
-    Serial.println(duration);
     if (duration == 0)
     {
         return -1.0; // timeout / no echo
@@ -207,19 +207,18 @@ void setup() {
 }
 
 void loop() {
-    float distanceCm = measureDistanceCM();
-    objectDistance = (distanceCm >= 0) ? (int)distanceCm : objectDistance;
+    float objectDistance = measureDistanceCM();
     vibrateCase(objectDistance);
     Serial.println(analogRead(2));
-    float voltage = (analogRead(2))*(3.0/1024.0);
+    float voltage = (analogRead(2))*(3.3/1024.0);
 
  float temperatureC = (voltage - 0.5) * 100 ;
   Serial.print(temperatureC); Serial.println(" degrees C");
    float temperatureF = (temperatureC * 9.0 / 5.0) + 32.0;
  Serial.print(temperatureF); Serial.println(" degrees F");
- if (distanceCm >= 0) {
+ if (objectDistance >= 0) {
         Serial.print("Distance: ");
-        Serial.print(distanceCm);
+        Serial.print(objectDistance);
         Serial.println(" cm");
     } else {
         Serial.println("Distance: timeout");
@@ -236,10 +235,11 @@ void loop() {
   display.setCursor(0, 10);
   // Display static text
   display.println(temperatureF);
+  display.setTextSize(2);
 display.setCursor(0, 36);
-  if (distanceCm >= 0) {
+  if (objectDistance >= 0) {
         display.print("Dist: ");
-        display.print(distanceCm);
+        display.print(objectDistance);
         display.println(" cm");
     } else {
         display.println("Dist: timeout");
