@@ -189,7 +189,7 @@ if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
 
 void loop() {
     // float objectDistance = analogRead(2);
-    vibrateCase(objectDistance);
+    vibrateCase(10);
   Serial.println(analogRead(2));
    float voltage = (analogRead(2))*(3.0/1024.0);
 
