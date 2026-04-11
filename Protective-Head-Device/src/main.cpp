@@ -166,7 +166,10 @@ bool connectToServer()
     Serial.println(myDevice->getAddress().toString().c_str());
 
     pClient = BLEDevice::createClient();
+    Serial.println("BLE Client created");
+    
     pClient->setClientCallbacks(new MyClientCallback());
+    Serial.println("Client callbacks set");
 
     if (!pClient->connect(myDevice))
     {
@@ -177,6 +180,8 @@ bool connectToServer()
     Serial.println("Connected to server");
 
     // Obtain a reference to the service
+    Serial.print("Getting service: ");
+    Serial.println(SERVICE_UUID);
     BLERemoteService* pRemoteService = pClient->getService(BLEUUID(SERVICE_UUID));
     if (pRemoteService == nullptr)
     {
@@ -185,8 +190,12 @@ bool connectToServer()
         pClient->disconnect();
         return false;
     }
+    
+    Serial.println("Service found!");
 
     // Obtain a reference to the characteristic
+    Serial.print("Getting characteristic: ");
+    Serial.println(CHARACTERISTIC_UUID_TX);
     pRemoteCharacteristic = pRemoteService->getCharacteristic(BLEUUID(CHARACTERISTIC_UUID_TX));
     if (pRemoteCharacteristic == nullptr)
     {
@@ -195,10 +204,13 @@ bool connectToServer()
         pClient->disconnect();
         return false;
     }
+    
+    Serial.println("Characteristic found!");
 
     // Register for notifications
     if (pRemoteCharacteristic->canNotify())
     {
+        Serial.println("Registering for notifications...");
         pRemoteCharacteristic->registerForNotify([](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {
             receivedData = "";
             for (size_t i = 0; i < length; i++)
@@ -208,6 +220,9 @@ bool connectToServer()
             Serial.print("Received from remote: ");
             Serial.println(receivedData);
         });
+        Serial.println("Notifications registered!");
+    } else {
+        Serial.println("Characteristic cannot notify!");
     }
 
     return true;
