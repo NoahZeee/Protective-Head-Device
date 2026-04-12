@@ -5,200 +5,244 @@
 #include <Adafruit_SSD1306.h>
 
 
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define OLED_RESET     -1
+// ── Display ───────────────────────────────────────────────────────────────
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+// ── Pins ──────────────────────────────────────────────────────────────────
 #define BTN_EMERGENCY 2
+#define BTN_BACKUP 3
 #define LED_PIN       23
-
-// WiFi Credentials and Server Info
-const char* WIFI_SSID     = "zaptop";
-const char* WIFI_PASSWORD = "12345678";
-const char* SERVER_IP     = "192.168.137.1";
-const int   SERVER_PORT   = 11111;
-
-// Vibration Motor Defines:
+#define TRIG_PIN 32
+#define ECHO_PIN 33
 #define VIBRATION_PIN_1 12
+
+// ── PWM ───────────────────────────────────────────────────────────────────
 #define VIBRATION_CHANNEL_1 0
 #define VIBRATION_FREQUENCY 1000 // Frequency for PWM (Hz)
 #define VIBRATION_RESOLUTION 8
 
-#define TRIG_PIN 32
-#define ECHO_PIN 33
-#define MAX_ECHO_TIME 30000 // 30 ms timeout for ~5 meters
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
+// ── WiFi / Server ─────────────────────────────────────────────────────────
+const char* WIFI_SSID     = "zaptop";
+const char* WIFI_PASSWORD = "12345678";
+const char* SERVER_IP     = "192.168.137.1";
+const int   SERVER_PORT   = 11111;
 WiFiClient client;
 
+#define MAX_ECHO_TIME 30000 // 30 ms timeout for ~5 meters
+
+// ── State ─────────────────────────────────────────────────────────────────
+String oledMessage      = "";   // message received from server
+bool   showingMessage   = false;
+unsigned long msgTimer  = 0;
+#define MSG_DISPLAY_MS  5000    // show message for 5 seconds
+
+// ── WiFi ──────────────────────────────────────────────────────────────────
 void connect_wifi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   Serial.println();
-  Serial.print("Connected! ESP32 IP: ");
+  Serial.print("Connected! IP: ");
   Serial.println(WiFi.localIP());
 }
 
 void connect_server() {
   Serial.print("Connecting to server...");
-  while (!client.connect(SERVER_IP, SERVER_PORT)) {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println("Connected to server!");
+  while (!client.connect(SERVER_IP, SERVER_PORT)) { delay(1000); Serial.print("."); }
+  Serial.println("Connected!");
 }
 
-void handle_incoming() {
-  if (client.available()) {
-    String msg = client.readStringUntil('\n');
-    msg.trim();
-    Serial.print("Received: ");
-    Serial.println(msg);
-
-    if (msg == "LED_ON") {
-      digitalWrite(LED_PIN, HIGH);
-      Serial.println("LED ON");
-    } 
-    else if (msg == "LED_OFF") {
-      digitalWrite(LED_PIN, LOW);
-      Serial.println("LED OFF");
-    }
-  }
-}
-
+// ── Vibration ─────────────────────────────────────────────────────────────
 void setupVibrationMotors() {
-    // Configure PWM for vibration motors
-    ledcSetup(VIBRATION_CHANNEL_1, VIBRATION_FREQUENCY, VIBRATION_RESOLUTION);
-    ledcAttachPin(VIBRATION_PIN_1, VIBRATION_CHANNEL_1);
-    
-    // Start with motors off
-    ledcWrite(VIBRATION_CHANNEL_1, 0);
+  ledcSetup(VIBRATION_CHANNEL_1, VIBRATION_FREQUENCY, VIBRATION_RESOLUTION);
+  ledcAttachPin(VIBRATION_PIN_1, VIBRATION_CHANNEL_1);
+  ledcWrite(VIBRATION_CHANNEL_1, 0);
 }
 
 void vibrateMotor(int intensity) {
-    // intensity: 0-255 (0 = off, 255 = max)
-    // duration: milliseconds
-    ledcWrite(VIBRATION_CHANNEL_1, intensity);
+  ledcWrite(VIBRATION_CHANNEL_1, intensity);
 }
 
-void vibrateCase(int objectDistance) {
-    if (objectDistance < 0) {
-        vibrateMotor(0); // Off
-    } else if (objectDistance < 20) {
-        vibrateMotor(255); // Max intensity
-    } else if (objectDistance < 30) {
-        vibrateMotor(200);
-    } else if (objectDistance < 40) {
-        vibrateMotor(128); // Medium intensity
-    } else if (objectDistance < 50) {
-        vibrateMotor(100);
-    }else if (objectDistance < 70) {
-        vibrateMotor(64); // Low intensity
-    } else {
-        vibrateMotor(0); // Off
-    }
+void vibrateCase(float objectDistance) {
+  if (objectDistance < 0)        vibrateMotor(0);
+  else if (objectDistance < 20)  vibrateMotor(255);
+  else if (objectDistance < 30)  vibrateMotor(200);
+  else if (objectDistance < 40)  vibrateMotor(128);
+  else if (objectDistance < 50)  vibrateMotor(100);
+  else if (objectDistance < 70)  vibrateMotor(64);
+  else                           vibrateMotor(0);
 }
 
-float measureDistanceCM()
-{
-    digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(2);
-    digitalWrite(TRIG_PIN, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(TRIG_PIN, LOW);
-
-    unsigned long duration = pulseIn(ECHO_PIN, HIGH, MAX_ECHO_TIME);
-    if (duration == 0)
-    {
-        return -1.0; // timeout / no echo
-    }
-    return (duration*.0343)/2;
+// ── Ultrasonic ────────────────────────────────────────────────────────────
+float measureDistanceCM() {
+  digitalWrite(TRIG_PIN, LOW);  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  unsigned long duration = pulseIn(ECHO_PIN, HIGH, MAX_ECHO_TIME);
+  if (duration == 0) return -1.0;
+  return (duration * 0.0343) / 2.0;
 }
 
+// ── Incoming TCP messages ─────────────────────────────────────────────────
+void handle_incoming() {
+  if (!client.available()) return;
+
+  String msg = client.readStringUntil('\n');
+  msg.trim();
+  if (msg.length() == 0) return;
+
+  Serial.print("Received from server: ");
+  Serial.println(msg);
+
+  // LED commands
+  if (msg == "LED_ON") {
+    digitalWrite(LED_PIN, HIGH);
+    return;
+  }
+  if (msg == "LED_OFF") {
+    digitalWrite(LED_PIN, LOW);
+    return;
+  }
+
+  // Everything else → display on OLED for 5 seconds
+  oledMessage    = msg;
+  showingMessage = true;
+  msgTimer       = millis();
+}
+
+// ── OLED draw ─────────────────────────────────────────────────────────────
+void drawSensorData(float tempF, float distCM) {
+  display.clearDisplay();
+
+  // Temperature (big)
+  display.setTextSize(3);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 4);
+  display.print(tempF, 1);
+  display.setTextSize(1);
+  display.print(" F");
+
+  // Distance
+  display.setTextSize(2);
+  display.setCursor(0, 42);
+  if (distCM >= 0) {
+    display.print(distCM, 1);
+    display.print("cm");
+  } else {
+    display.print("No echo");
+  }
+
+  display.display();
+}
+
+void drawMessage(String msg) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+
+  // Header
+  display.fillRect(0, 0, SCREEN_WIDTH, 12, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(2, 2);
+  display.print(">> MSG FROM BASE");
+
+  // Message body — word wrap
+  display.setTextColor(WHITE);
+  display.setCursor(0, 16);
+  display.setTextSize(1);
+
+  // Simple word wrap at ~21 chars per line
+  int lineLen = 21;
+  for (int i = 0; i < (int)msg.length(); i += lineLen) {
+    display.println(msg.substring(i, min(i + lineLen, (int)msg.length())));
+  }
+
+  display.display();
+}
+
+// ── Setup ─────────────────────────────────────────────────────────────────
 void setup() {
-  // put your setup code here, to run once:
   setupVibrationMotors();
+
   Wire.setPins(4, 5);
   Wire.begin();
-  pinMode(2, INPUT);
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
+
+  pinMode(BTN_EMERGENCY, INPUT_PULLUP);
+  pinMode(BTN_BACKUP,    INPUT_PULLUP);
+  pinMode(LED_PIN,       OUTPUT);
+  pinMode(TRIG_PIN,      OUTPUT);
+  pinMode(ECHO_PIN,      INPUT);
+  digitalWrite(LED_PIN,  LOW);
   digitalWrite(TRIG_PIN, LOW);
-  Serial.begin(9600);
-  analogReadResolution(10); 
 
   Serial.begin(115200);
-  pinMode(BTN_EMERGENCY, INPUT_PULLUP);
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+  analogReadResolution(10);
+
+  // OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("SSD1306 not found!");
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println("Booting...");
+  display.display();
+
   connect_wifi();
   connect_server();
   Serial.println("Helmet ready!");
-  delay(200);
 }
 
+// ── Loop ──────────────────────────────────────────────────────────────────
 void loop() {
 
-    if (!client.connected()) {
+  // Reconnect if dropped
+  if (!client.connected()) {
     Serial.println("Lost connection, reconnecting...");
     connect_server();
   }
 
-
-    if (digitalRead(BTN_EMERGENCY) == LOW) {
+  // ── Button: EMERGENCY ──
+  if (digitalRead(BTN_EMERGENCY) == LOW) {
     Serial.println("Sending: EMERGENCY");
     client.println("EMERGENCY");
     delay(300);
   }
 
+  // ── Button: BACKUP ──
+  if (digitalRead(BTN_BACKUP) == LOW) {
+    Serial.println("Sending: BACKUP");
+    client.println("BACKUP");
+    delay(300);
+  }
 
-    float objectDistance = measureDistanceCM();
-    vibrateCase(objectDistance);
-    Serial.println(analogRead(2));
-    float voltage = (analogRead(2))*(3.3/1024.0);
+  // ── Sensors ──
+  float distCM = measureDistanceCM();
+  vibrateCase(distCM);
 
- float temperatureC = (voltage - 0.5) * 100 + 2;
-  Serial.print(temperatureC); Serial.println(" degrees C");
-   float temperatureF = (temperatureC * 9.0 / 5.0) + 32.0;
- Serial.print(temperatureF); Serial.println(" degrees F");
- if (objectDistance >= 0) {
-        Serial.print("Distance: ");
-        Serial.print(objectDistance);
-        Serial.println(" cm");
-    } else {
-        Serial.println("Distance: timeout");
+  int raw       = analogRead(2);
+  float voltage = raw * (3.3f / 1024.0f);
+  float tempC   = (voltage - 0.5f) * 100.0f + 2.0f;
+  float tempF   = (tempC * 9.0f / 5.0f) + 32.0f;
+
+  // ── Incoming messages ──
+  handle_incoming();
+
+  // ── OLED: show message or sensor data ──
+  if (showingMessage) {
+    drawMessage(oledMessage);
+    if (millis() - msgTimer > MSG_DISPLAY_MS) {
+      showingMessage = false;   // revert to sensor data after 5s
     }
- 
-   display.clearDisplay();
+  } else {
+    drawSensorData(tempF, distCM);
+  }
 
-   
-  display.setTextSize(3);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 10);
-  // Display static text
-  display.println(temperatureF);
-  display.setTextSize(2);
-display.setCursor(0, 36);
-  if (objectDistance >= 0) {
-        display.print("Dist: ");
-        display.print(objectDistance);
-        display.println(" cm");
-    } else {
-        display.println("Dist: timeout");
-    }
-  display.display(); 
-
-
-  
- handle_incoming();
-
-    delay(100);
+  delay(100);
 }
-
-// put function definitions here:
