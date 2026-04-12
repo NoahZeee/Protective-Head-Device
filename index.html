@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Helmet Command</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:        #0a0a0a;
+    --panel:     #111111;
+    --border:    #222222;
+    --text:      #e8e8e8;
+    --dim:       #555;
+    --ok:        #00c853;
+    --backup:    #ff9100;
+    --emergency: #ff1744;
+    --accent:    #ff6d00;
+    --font-head: 'Bebas Neue', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Top bar ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+
+  header h1 {
+    font-family: var(--font-head);
+    font-size: 2rem;
+    letter-spacing: 4px;
+    color: var(--accent);
+  }
+
+  #ws-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.7rem;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  #ws-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--dim);
+    transition: background 0.4s;
+  }
+  #ws-dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+  /* ── Main layout ── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 0;
+    height: calc(100vh - 65px);
+  }
+
+  /* ── Helmet panel ── */
+  .helmets {
+    padding: 32px;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-size: 0.65rem;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 20px;
+  }
+
+  .helmet-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+
+  .helmet-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--ok);
+    transition: background 0.3s;
+  }
+
+  .helmet-card.BACKUP::before   { background: var(--backup); }
+  .helmet-card.EMERGENCY::before { background: var(--emergency); }
+  .helmet-card.BACKUP   { border-color: var(--backup); }
+  .helmet-card.EMERGENCY { border-color: var(--emergency); animation: pulse-border 1s infinite; }
+
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,23,68,0); }
+    50%       { box-shadow: 0 0 20px 4px rgba(255,23,68,0.3); }
+  }
+
+  .helmet-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .helmet-id {
+    font-family: var(--font-head);
+    font-size: 3rem;
+    letter-spacing: 3px;
+    line-height: 1;
+  }
+
+  .conn-badge {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 2px;
+    background: #1a1a1a;
+    color: var(--dim);
+    border: 1px solid var(--border);
+    transition: all 0.3s;
+  }
+  .conn-badge.connected {
+    color: var(--ok);
+    border-color: var(--ok);
+    background: rgba(0,200,83,0.08);
+  }
+
+  /* ── Status bar ── */
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .status-label {
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--dim);
+    min-width: 50px;
+  }
+
+  .status-bar-track {
+    flex: 1;
+    height: 28px;
+    background: #1a1a1a;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .status-bar-fill {
+    height: 100%;
+    width: 100%;
+    background: var(--ok);
+    transition: background 0.4s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .status-bar-fill.BACKUP    { background: var(--backup); }
+  .status-bar-fill.EMERGENCY {
+    background: var(--emergency);
+    animation: flicker 0.8s infinite;
+  }
+
+  @keyframes flicker {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0.7; }
+  }
+
+  .status-text {
+    font-family: var(--font-head);
+    font-size: 1rem;
+    letter-spacing: 4px;
+    color: #fff;
+  }
+
+  /* ── Alert log ── */
+  .alert-log {
+    margin-top: 20px;
+  }
+
+  .alert-log-label {
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 10px;
+  }
+
+  #alert-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  #alert-list::-webkit-scrollbar { width: 3px; }
+  #alert-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+  #alert-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.72rem;
+    padding: 7px 10px;
+    background: #141414;
+    border-left: 3px solid var(--dim);
+    border-radius: 2px;
+    animation: slide-in 0.25s ease;
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  #alert-list li.EMERGENCY { border-left-color: var(--emergency); color: var(--emergency); }
+  #alert-list li.BACKUP    { border-left-color: var(--backup);    color: var(--backup); }
+  #alert-list li.OK        { border-left-color: var(--ok);        color: var(--ok); }
+
+  .alert-time { color: var(--dim); font-size: 0.65rem; min-width: 60px; }
+
+  /* ── Sidebar ── */
+  aside {
+    display: flex;
+    flex-direction: column;
+    padding: 32px 24px;
+    gap: 28px;
+  }
+
+  .sidebar-section { display: flex; flex-direction: column; gap: 12px; }
+
+  textarea {
+    background: #141414;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    padding: 12px;
+    resize: none;
+    height: 100px;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--dim); }
+
+  button {
+    font-family: var(--font-head);
+    font-size: 1.1rem;
+    letter-spacing: 3px;
+    cursor: pointer;
+    border: none;
+    border-radius: 3px;
+    padding: 12px;
+    transition: all 0.15s;
+    width: 100%;
+  }
+
+  #btn-send {
+    background: var(--accent);
+    color: #fff;
+  }
+  #btn-send:hover  { background: #ff8c00; }
+  #btn-send:active { transform: scale(0.98); }
+  #btn-send:disabled { background: var(--border); color: var(--dim); cursor: not-allowed; }
+
+  /* quick actions */
+  .quick-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .q-btn {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    padding: 10px 6px;
+    background: #141414;
+    color: var(--dim);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--font-mono);
+  }
+  .q-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* toast */
+  #toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 12px 18px;
+    font-size: 0.75rem;
+    border-radius: 3px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s;
+    pointer-events: none;
+    z-index: 999;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+
+  /* disconnected overlay */
+  #disconnected-banner {
+    display: none;
+    background: rgba(255,23,68,0.08);
+    border: 1px solid var(--emergency);
+    color: var(--emergency);
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 10px;
+    margin-bottom: 0;
+  }
+  #disconnected-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⬡ F.I.R.E</h1>
+  <div id="ws-status">
+    <div id="ws-dot"></div>
+    <span id="ws-label">Connecting...</span>
+  </div>
+</header>
+
+<div id="disconnected-banner">⚠ Helmet H1 disconnected</div>
+
+<main>
+  <!-- Left: helmet cards -->
+  <section class="helmets">
+    <div class="section-label">// Active Helmets</div>
+
+    <div class="helmet-card OK" id="card-H1">
+      <div class="helmet-top">
+        <div class="helmet-id">H1</div>
+        <div class="conn-badge" id="conn-H1">Offline</div>
+      </div>
+
+      <div class="status-row">
+        <span class="status-label">Status</span>
+        <div class="status-bar-track">
+          <div class="status-bar-fill OK" id="bar-H1">
+            <span class="status-text" id="bar-text-H1">STANDBY</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-log">
+        <div class="alert-log-label">// Alert history</div>
+        <ul id="alert-list"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Right: send message -->
+  <aside>
+    <div class="sidebar-section">
+      <div class="section-label">// Send to Helmet</div>
+      <textarea id="msg-input" placeholder="Type a message to display on helmet OLED..."></textarea>
+      <button id="btn-send" disabled>SEND MESSAGE</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">// Quick Commands</div>
+      <div class="quick-btns">
+        <button class="q-btn" onclick="quickSend('EVACUATE NOW')">Evacuate</button>
+        <button class="q-btn" onclick="quickSend('RETURN TO BASE')">RTB</button>
+        <button class="q-btn" onclick="quickSend('FLOOR CLEAR')">Floor Clear</button>
+        <button class="q-btn" onclick="quickSend('HOLD POSITION')">Hold</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div id="toast"></div>
+
+<script>
+  const WS_URL = "ws://localhost:8765";
+
+  let ws = null;
+  let helmetConnected = false;
+
+  const card     = document.getElementById("card-H1");
+  const bar      = document.getElementById("bar-H1");
+  const barText  = document.getElementById("bar-text-H1");
+  const connBadge= document.getElementById("conn-H1");
+  const alertList= document.getElementById("alert-list");
+  const sendBtn  = document.getElementById("btn-send");
+  const msgInput = document.getElementById("msg-input");
+  const wsDot    = document.getElementById("ws-dot");
+  const wsLabel  = document.getElementById("ws-label");
+  const banner   = document.getElementById("disconnected-banner");
+
+  // ── WebSocket ────────────────────────────────────────────────────────
+  function connectWS() {
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      wsDot.classList.add("live");
+      wsLabel.textContent = "Server live";
+    };
+
+    ws.onclose = () => {
+      wsDot.classList.remove("live");
+      wsLabel.textContent = "Reconnecting...";
+      setTimeout(connectWS, 2000);
+    };
+
+    ws.onmessage = ({ data }) => {
+      const msg = JSON.parse(data);
+      handleMsg(msg);
+    };
+  }
+
+  // ── Message handler ───────────────────────────────────────────────────
+  function handleMsg(msg) {
+    if (msg.type === "init" || msg.type === "helmet_connected" || msg.type === "status_update") {
+      updateHelmet(msg.helmet);
+    }
+    if (msg.type === "helmet_disconnected") {
+      updateHelmet(msg.helmet);
+    }
+  }
+
+  function updateHelmet(h) {
+    const status    = h.status;      // OK | BACKUP | EMERGENCY
+    const connected = h.connected;
+
+    helmetConnected = connected;
+
+    // connection badge
+    connBadge.textContent = connected ? "Online" : "Offline";
+    connBadge.className   = "conn-badge" + (connected ? " connected" : "");
+
+    // disconnected banner
+    banner.className = connected ? "" : "show";
+
+    // send button
+    sendBtn.disabled = !connected;
+
+    // status bar
+    const labels = { OK: "STANDBY", BACKUP: "BACKUP REQUESTED", EMERGENCY: "EMERGENCY" };
+    bar.className    = "status-bar-fill " + status;
+    barText.textContent = labels[status] || status;
+    card.className   = "helmet-card " + status;
+
+    // log entry only on real status changes (not init)
+    if (connected) {
+      addAlert(status);
+    }
+  }
+
+  let lastLogged = null;
+  function addAlert(status) {
+    if (status === lastLogged) return;
+    lastLogged = status;
+
+    const now  = new Date();
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const labels = { OK: "Standby", BACKUP: "Backup requested", EMERGENCY: "⚠ EMERGENCY" };
+
+    const li = document.createElement("li");
+    li.className = status;
+    li.innerHTML = `<span class="alert-time">${time}</span><span>${labels[status] || status}</span>`;
+    alertList.prepend(li);
+
+    // Keep max 20 entries
+    while (alertList.children.length > 20) alertList.removeChild(alertList.lastChild);
+  }
+
+  // ── Send message ──────────────────────────────────────────────────────
+  sendBtn.addEventListener("click", sendMessage);
+  msgInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "send_message", text }));
+    msgInput.value = "";
+    showToast(`Sent: "${text}"`);
+  }
+
+  function quickSend(text) {
+    if (!helmetConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+      showToast("Helmet not connected"); return;
+    }
+    ws.send(JSON.stringify({ type: "send_message", text }));
+    showToast(`Sent: "${text}"`);
+  }
+
+  // ── Toast ─────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2500);
+  }
+
+  connectWS();
+</script>
+</body>
+</html>

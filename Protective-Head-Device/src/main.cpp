@@ -4,43 +4,31 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-// ── Display ───────────────────────────────────────────────────────────────
+// Defines
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
-// ── Buttons ───────────────────────────────────────────────────────────────
 #define BTN_EMERGENCY 21
 #define BTN_BACKUP    22
-
-// ── Vibration ─────────────────────────────────────────────────────────────
 #define VIBRATION_PIN_1      12
 #define VIBRATION_CHANNEL_1  0
 #define VIBRATION_FREQUENCY  1000
 #define VIBRATION_RESOLUTION 8
-
-// ── Ultrasonic ────────────────────────────────────────────────────────────
 #define TRIG_PIN      33
 #define ECHO_PIN      32
 #define MAX_ECHO_TIME 30000
-
-// ── WiFi / Server ─────────────────────────────────────────────────────────
 const char* WIFI_SSID     = "zaptop";
 const char* WIFI_PASSWORD = "12345678";
 const char* SERVER_IP     = "192.168.137.1";
 const int   SERVER_PORT   = 11111;
 WiFiClient client;
-
-// ── OLED message state ────────────────────────────────────────────────────
 String        oledMessage    = "";
 bool          showingMessage = false;
 unsigned long msgTimer       = 0;
 #define MSG_DISPLAY_MS 5000
 
-// ═════════════════════════════════════════════════════════════════════════
-// WiFi / TCP
-// ═════════════════════════════════════════════════════════════════════════
+// Wifi
 void connect_wifi() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -68,9 +56,7 @@ void handle_incoming() {
     msgTimer       = millis();
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// Vibration
-// ═════════════════════════════════════════════════════════════════════════
+// Vibration Motor
 void setupVibrationMotors() {
     ledcSetup(VIBRATION_CHANNEL_1, VIBRATION_FREQUENCY, VIBRATION_RESOLUTION);
     ledcAttachPin(VIBRATION_PIN_1, VIBRATION_CHANNEL_1);
@@ -91,28 +77,24 @@ void vibrateCase(float objectDistance) {
     else                           vibrateMotor(0);
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// Ultrasonic — fixed timing
-// ═════════════════════════════════════════════════════════════════════════
+// Ultrasonic Sensor
 float measureDistanceCM() {
     digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(4);          // settle
+    delayMicroseconds(4);  
     digitalWrite(TRIG_PIN, HIGH);
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(10);         // let pin settle before listening
+    delayMicroseconds(10);       
 
     unsigned long duration = pulseIn(ECHO_PIN, HIGH, MAX_ECHO_TIME);
     if (duration == 0) return -1.0f;
 
     float distance = (duration * 0.0343f) / 2.0f;
-    if (distance > 400.0f) return -1.0f;  // filter impossible readings
+    if (distance > 400.0f) return -1.0f;
     return distance;
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// OLED drawing
-// ═════════════════════════════════════════════════════════════════════════
+// OLED
 void drawSensorData(float tempF, float distCM) {
     display.clearDisplay();
 
@@ -154,12 +136,10 @@ void drawMessage(String msg) {
     display.display();
 }
 
-// ═════════════════════════════════════════════════════════════════════════
+
 // Setup
-// ═════════════════════════════════════════════════════════════════════════
 void setup() {
     Serial.begin(9600);
-    // NOTE: no analogReadResolution() — analogReadMilliVolts handles it
 
     setupVibrationMotors();
 
@@ -190,18 +170,14 @@ void setup() {
     Serial.println("Helmet ready!");
 }
 
-// ═════════════════════════════════════════════════════════════════════════
 // Loop
-// ═════════════════════════════════════════════════════════════════════════
 void loop() {
 
-    // ── Reconnect if dropped ──
     if (!client.connected()) {
         Serial.println("Lost connection, reconnecting...");
         connect_server();
     }
 
-    // ── Buttons ──
     if (digitalRead(BTN_EMERGENCY) == LOW) {
         Serial.println("Sending: EMERGENCY");
         client.println("EMERGENCY");
@@ -214,7 +190,6 @@ void loop() {
         delay(300);
     }
 
-    // ── Temperature (TMP36 via analogReadMilliVolts) ──
     Serial.println(analogRead(2));
  float voltage = (analogRead(2))*(3.3/1024.0);
 
@@ -223,7 +198,6 @@ void loop() {
    float tempF = (tempC * 9.0 / 5.0) + 32.0;
  Serial.print(tempF); Serial.println(" degrees F");
 
-    // ── Ultrasonic ──
     float distCM = measureDistanceCM();
     vibrateCase(distCM);
 
@@ -233,10 +207,8 @@ void loop() {
         Serial.println("Distance: timeout");
     }
 
-    // ── Incoming TCP message ──
     handle_incoming();
 
-    // ── OLED ──
     if (showingMessage) {
         drawMessage(oledMessage);
         if (millis() - msgTimer > MSG_DISPLAY_MS) {
