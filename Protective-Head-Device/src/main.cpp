@@ -1,12 +1,22 @@
 #include <Arduino.h>
 #include <Wire.h>
-
+#include <WiFi.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET     -1
+
+#define BTN_EMERGENCY 2
+#define LED_PIN       23
+
+// WiFi Credentials and Server Info
+const char* WIFI_SSID     = "zaptop";
+const char* WIFI_PASSWORD = "12345678";
+const char* SERVER_IP     = "192.168.137.1";
+const int   SERVER_PORT   = 11111;
 
 // Vibration Motor Defines:
 #define VIBRATION_PIN_1 12
@@ -19,6 +29,48 @@
 #define MAX_ECHO_TIME 30000 // 30 ms timeout for ~5 meters
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+WiFiClient client;
+
+void connect_wifi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.print("Connected! ESP32 IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void connect_server() {
+  Serial.print("Connecting to server...");
+  while (!client.connect(SERVER_IP, SERVER_PORT)) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("Connected to server!");
+}
+
+void handle_incoming() {
+  if (client.available()) {
+    String msg = client.readStringUntil('\n');
+    msg.trim();
+    Serial.print("Received: ");
+    Serial.println(msg);
+
+    if (msg == "LED_ON") {
+      digitalWrite(LED_PIN, HIGH);
+      Serial.println("LED ON");
+    } 
+    else if (msg == "LED_OFF") {
+      digitalWrite(LED_PIN, LOW);
+      Serial.println("LED OFF");
+    }
+  }
+}
 
 void setupVibrationMotors() {
     // Configure PWM for vibration motors
@@ -80,10 +132,32 @@ void setup() {
   digitalWrite(TRIG_PIN, LOW);
   Serial.begin(9600);
   analogReadResolution(10); 
+
+  Serial.begin(115200);
+  pinMode(BTN_EMERGENCY, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  connect_wifi();
+  connect_server();
+  Serial.println("Helmet ready!");
   delay(200);
 }
 
 void loop() {
+
+    if (!client.connected()) {
+    Serial.println("Lost connection, reconnecting...");
+    connect_server();
+  }
+
+
+    if (digitalRead(BTN_EMERGENCY) == LOW) {
+    Serial.println("Sending: EMERGENCY");
+    client.println("EMERGENCY");
+    delay(300);
+  }
+
+
     float objectDistance = measureDistanceCM();
     vibrateCase(objectDistance);
     Serial.println(analogRead(2));
@@ -122,7 +196,7 @@ display.setCursor(0, 36);
 
 
   
-
+ handle_incoming();
 
     delay(100);
 }
